@@ -28,9 +28,10 @@ def tokenize_conversation(
     """
     Tokenize a conversation and get response content token indices.
 
-    Uses the tokenizer's built-in `return_assistant_tokens_mask` feature
-    which parses the Jinja chat template to identify assistant content tokens
-    (excludes special format tokens like <|assistant|>).
+    Tries multiple approaches in order:
+    1. return_assistant_tokens_mask (if template supports {% generation %})
+    2. Model-specific special token detection (Qwen, Llama)
+    3. Character offset mapping fallback
 
     Args:
         tokenizer: HuggingFace tokenizer
@@ -39,19 +40,150 @@ def tokenize_conversation(
     Returns:
         Dict with 'input_ids' and 'response_indices'
     """
-    result = tokenizer.apply_chat_template(
-        conversation,
-        tokenize=True,
-        return_assistant_tokens_mask=True,
-        return_dict=True,
-    )
+    # Try return_assistant_tokens_mask first (canonical approach)
+    try:
+        result = tokenizer.apply_chat_template(
+            conversation,
+            tokenize=True,
+            return_assistant_tokens_mask=True,
+            return_dict=True,
+        )
+        assistant_mask = result["assistant_masks"]
+        response_indices = [i for i, is_asst in enumerate(assistant_mask) if is_asst]
 
-    assistant_mask = result["assistant_mask"]
-    response_indices = [i for i, is_asst in enumerate(assistant_mask) if is_asst]
+        if response_indices:
+            return {
+                "input_ids": result["input_ids"],
+                "response_indices": response_indices,
+            }
+    except Exception:
+        pass
+
+    # Fall back to model-specific approaches
+    model_name = getattr(tokenizer, "name_or_path", "").lower()
+
+    if "qwen" in model_name:
+        return _tokenize_qwen(tokenizer, conversation)
+    else:
+        return _tokenize_with_offset_mapping(tokenizer, conversation)
+
+
+def _tokenize_qwen(
+    tokenizer,
+    conversation: List[Dict[str, str]],
+) -> Dict:
+    """
+    Qwen-specific tokenization using special token boundaries.
+
+    Finds assistant responses by locating <|im_start|>assistant...<|im_end|> patterns.
+    """
+    # Get full tokenized conversation
+    full_text = tokenizer.apply_chat_template(
+        conversation, tokenize=False, add_generation_prompt=False
+    )
+    full_tokens = tokenizer(full_text, add_special_tokens=False)
+    token_ids = full_tokens["input_ids"]
+
+    # Get special token IDs
+    try:
+        im_start_id = tokenizer.convert_tokens_to_ids("<|im_start|>")
+        im_end_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
+        assistant_token_id = tokenizer.convert_tokens_to_ids("assistant")
+    except (KeyError, ValueError):
+        # Fallback if special tokens not found
+        return _tokenize_with_offset_mapping(tokenizer, conversation)
+
+    # Find assistant response sections
+    response_indices = []
+    i = 0
+    while i < len(token_ids):
+        # Look for <|im_start|>assistant pattern
+        if (i + 1 < len(token_ids) and
+            token_ids[i] == im_start_id and
+            token_ids[i + 1] == assistant_token_id):
+
+            # Found start of assistant response, skip header tokens
+            # Pattern: <|im_start|>assistant\n
+            response_start = i + 2
+
+            # Skip newline token if present
+            if response_start < len(token_ids):
+                newline_text = tokenizer.decode([token_ids[response_start]])
+                if newline_text.strip() == "":
+                    response_start += 1
+
+            # Find the corresponding <|im_end|>
+            response_end = None
+            for j in range(response_start, len(token_ids)):
+                if token_ids[j] == im_end_id:
+                    response_end = j
+                    break
+
+            if response_end is not None:
+                response_indices.extend(range(response_start, response_end))
+                i = response_end + 1
+            else:
+                i += 1
+        else:
+            i += 1
 
     return {
-        "input_ids": result["input_ids"],
+        "input_ids": token_ids,
         "response_indices": response_indices,
+    }
+
+
+def _tokenize_with_offset_mapping(
+    tokenizer,
+    conversation: List[Dict[str, str]],
+) -> Dict:
+    """
+    Tokenization using character offset mapping.
+
+    Processes each assistant turn incrementally to find content boundaries.
+    """
+    # Get full tokenized conversation
+    full_text = tokenizer.apply_chat_template(
+        conversation, tokenize=False, add_generation_prompt=False
+    )
+    encoding = tokenizer(full_text, add_special_tokens=False, return_offsets_mapping=True)
+    token_ids = encoding["input_ids"]
+    offset_mapping = encoding["offset_mapping"]
+
+    response_indices = []
+
+    # Process each assistant turn
+    for i, turn in enumerate(conversation):
+        if turn["role"] != "assistant":
+            continue
+
+        content = turn["content"]
+        if not content:
+            continue
+
+        # Get conversation up to and including this turn
+        conv_including = conversation[:i + 1]
+        text_including = tokenizer.apply_chat_template(
+            conv_including, tokenize=False, add_generation_prompt=False
+        )
+
+        # Find where content appears in the formatted text for this turn
+        # Search from the end of the previous content to avoid matching earlier occurrences
+        content_start = text_including.rfind(content)
+        if content_start == -1:
+            continue
+
+        content_end = content_start + len(content)
+
+        # Map to token indices using offset mapping
+        for idx, (tok_start, tok_end) in enumerate(offset_mapping):
+            if tok_start < content_end and tok_end > content_start:
+                if idx not in response_indices:
+                    response_indices.append(idx)
+
+    return {
+        "input_ids": token_ids,
+        "response_indices": sorted(response_indices),
     }
 
 
