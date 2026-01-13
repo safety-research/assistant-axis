@@ -35,11 +35,17 @@ pip install -e .
 ### Load and use a pre-computed axis
 
 ```python
+from huggingface_hub import hf_hub_download
 from assistant_axis import load_model, load_axis, ActivationSteering, generate_response
 
 # Load model and axis
 model, tokenizer = load_model("google/gemma-2-27b-it")
-axis = load_axis("outputs/gemma-2-27b/axis.pt")
+axis_path = hf_hub_download(
+    repo_id="lu-christina/assistant-axis-vectors",
+    filename="gemma-2-27b/assistant_axis.pt",
+    repo_type="dataset"
+)
+axis = load_axis(axis_path)
 
 # Steer model outputs (positive = more assistant-like, negative = more role-playing)
 with ActivationSteering(model, steering_vectors=[axis[22]],

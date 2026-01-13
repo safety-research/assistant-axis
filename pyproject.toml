@@ -8,6 +8,7 @@ dependencies = [
     "torch>=2.0",
     "transformers>=4.40",
     "accelerate",
+    "huggingface_hub",
     "vllm",
     "scikit-learn",
     "numpy",
