@@ -15,8 +15,8 @@
 set -e  # Exit on error
 
 # Configuration
-MODEL="google/gemma-2-9b-it"
-OUTPUT_DIR="outputs/gemma-2-9b"
+MODEL="Qwen/Qwen3-32B"
+OUTPUT_DIR="outputs/qwen-3-32b"
 ROLES_DIR="data/prompts/roles"
 QUESTIONS_FILE="data/prompts/questions.jsonl"
 

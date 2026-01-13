@@ -212,11 +212,9 @@ fig = plot_variance_explained(variance)
 
 ## Model Support
 
-Pre-configured models:
+Models used in the paper:
 - `google/gemma-2-27b-it` (target layer: 22)
-- `google/gemma-2-9b-it` (target layer: 21)
 - `Qwen/Qwen3-32B` (target layer: 32)
-- `Qwen/Qwen2.5-32B-Instruct` (target layer: 32)
 - `meta-llama/Llama-3.3-70B-Instruct` (target layer: 40)
 
 Other models will auto-infer configuration.
