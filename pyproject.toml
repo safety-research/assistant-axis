@@ -1,0 +1,26 @@
+[project]
+name = "assistant-axis"
+version = "0.1.0"
+description = "Tools for computing and steering with the assistant axis"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "transformers>=4.40",
+    "accelerate",
+    "scikit-learn",
+    "numpy",
+    "plotly",
+    "jupyter",
+    "pyarrow",
+    "openai",
+    "python-dotenv",
+    "tqdm",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["assistant_axis"]

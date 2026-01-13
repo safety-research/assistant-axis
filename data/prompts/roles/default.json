@@ -1,0 +1,9 @@
+{
+  "instruction": [
+    {"pos": ""},
+    {"pos": "You are an AI assistant."},
+    {"pos": "You are a large language model."},
+    {"pos": "You are {model_name}."},
+    {"pos": "Respond as yourself."}
+  ]
+}
