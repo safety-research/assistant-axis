@@ -11,7 +11,7 @@ using an LLM judge (e.g., GPT-4). Scores are on a 0-3 scale:
 
 Usage:
     uv run scripts/3_judge.py \
-        --rollouts outputs/gemma-2-27b/rollouts.parquet \
+        --responses_dir outputs/gemma-2-27b/responses \
         --roles_dir data/prompts/roles \
         --output_dir outputs/gemma-2-27b/scores \
         --judge_model gpt-4.1-mini
@@ -20,20 +20,25 @@ Usage:
 import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
 from pathlib import Path
+from typing import Dict, List, Optional
 
-import pandas as pd
+import jsonlines
 from dotenv import load_dotenv
 from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from assistant_axis.judge import score_responses, RateLimiter, call_judge_batch, parse_judge_score
+from assistant_axis.judge import RateLimiter, call_judge_batch, parse_judge_score
 import openai
 
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 def load_role_eval_prompt(role_file: str) -> str:
@@ -43,37 +48,63 @@ def load_role_eval_prompt(role_file: str) -> str:
     return data.get("eval_prompt", "")
 
 
+def load_responses(responses_file: Path) -> List[dict]:
+    """Load responses from JSONL file."""
+    responses = []
+    with jsonlines.open(responses_file, 'r') as reader:
+        for entry in reader:
+            responses.append(entry)
+    return responses
+
+
 async def process_role(
     role: str,
-    role_df: pd.DataFrame,
+    responses: List[dict],
     eval_prompt_template: str,
     client: openai.AsyncOpenAI,
     rate_limiter: RateLimiter,
     judge_model: str,
     max_tokens: int,
     batch_size: int,
+    existing_scores: Dict[str, int],
 ) -> dict:
     """Process a single role and return scores."""
     # Build prompts for each response
     prompts = []
     keys = []
 
-    for _, row in role_df.iterrows():
-        prompt_idx = row["prompt_idx"]
-        question_idx = row["question_idx"]
-        question = row["user_prompt"]
-        response = row["response"]
+    for resp in responses:
+        prompt_idx = resp["prompt_index"]
+        question_idx = resp["question_index"]
+        question = resp["question"]
+
+        # Get assistant response from conversation
+        assistant_response = ""
+        for msg in resp["conversation"]:
+            if msg["role"] == "assistant":
+                assistant_response = msg["content"]
+                break
+
+        key = f"q{question_idx}_p{prompt_idx}"
+
+        # Skip if already scored
+        if key in existing_scores:
+            continue
 
         # Fill in template
         judge_prompt = eval_prompt_template.format(
             question=question,
-            answer=response
+            answer=assistant_response
         )
         prompts.append(judge_prompt)
-        keys.append(f"q{question_idx}_p{prompt_idx}")
+        keys.append(key)
+
+    if not prompts:
+        return {}
 
     # Call judge
-    responses = await call_judge_batch(
+    logger.info(f"Scoring {len(prompts)} new responses for {role}...")
+    responses_text = await call_judge_batch(
         client=client,
         prompts=prompts,
         model=judge_model,
@@ -84,7 +115,7 @@ async def process_role(
 
     # Parse scores
     scores = {}
-    for key, response_text in zip(keys, responses):
+    for key, response_text in zip(keys, responses_text):
         if response_text:
             score = parse_judge_score(response_text)
             if score is not None:
@@ -95,7 +126,7 @@ async def process_role(
 
 async def main_async():
     parser = argparse.ArgumentParser(description="Score role responses with judge LLM")
-    parser.add_argument("--rollouts", type=str, required=True, help="Path to rollouts Parquet file")
+    parser.add_argument("--responses_dir", type=str, required=True, help="Directory with response JSONL files")
     parser.add_argument("--roles_dir", type=str, required=True, help="Directory containing role JSON files")
     parser.add_argument("--output_dir", type=str, required=True, help="Output directory for score JSON files")
     parser.add_argument("--judge_model", type=str, default="gpt-4.1-mini", help="Judge model to use")
@@ -104,85 +135,98 @@ async def main_async():
     parser.add_argument("--requests_per_second", type=int, default=100, help="Rate limit")
     parser.add_argument("--roles", nargs="+", help="Specific roles to process")
     parser.add_argument("--skip_existing", action="store_true", help="Skip roles with existing scores")
-    parser.add_argument("--skip_default", action="store_true", default=True, help="Skip default role (no judging needed)")
+    parser.add_argument("--skip_default", action="store_true", default=True, help="Skip default role")
     args = parser.parse_args()
 
     # Check for API key
     if not os.getenv("OPENAI_API_KEY"):
-        print("Error: OPENAI_API_KEY not found")
+        logger.error("OPENAI_API_KEY not found")
         sys.exit(1)
 
     # Create output directory
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load rollouts
-    print(f"Loading rollouts from {args.rollouts}")
-    df = pd.read_parquet(args.rollouts)
-    print(f"Loaded {len(df)} rollouts")
-
-    # Get roles to process
+    responses_dir = Path(args.responses_dir)
     roles_dir = Path(args.roles_dir)
+
+    # Get response files
+    response_files = sorted(responses_dir.glob("*.jsonl"))
+    logger.info(f"Found {len(response_files)} response files")
+
+    # Filter roles if specified
     if args.roles:
-        roles = args.roles
-    else:
-        roles = df["role"].unique().tolist()
+        response_files = [f for f in response_files if f.stem in args.roles]
 
-    # Skip default role (no eval_prompt)
+    # Skip default role
     if args.skip_default:
-        roles = [r for r in roles if r != "default"]
+        response_files = [f for f in response_files if f.stem != "default"]
 
-    print(f"Processing {len(roles)} roles")
+    logger.info(f"Processing {len(response_files)} roles")
 
     # Initialize client and rate limiter
     client = openai.AsyncOpenAI()
     rate_limiter = RateLimiter(args.requests_per_second)
 
     # Process each role
-    for role in tqdm(roles, desc="Scoring roles"):
+    for response_file in tqdm(response_files, desc="Scoring roles"):
+        role = response_file.stem
         output_file = output_dir / f"{role}.json"
 
-        # Skip if exists
+        # Load existing scores
+        existing_scores = {}
+        if output_file.exists():
+            try:
+                with open(output_file, 'r') as f:
+                    existing_scores = json.load(f)
+            except Exception:
+                pass
+
+        # Skip if all done and skip_existing
         if args.skip_existing and output_file.exists():
             continue
 
-        # Get role data
+        # Get role eval prompt
         role_file = roles_dir / f"{role}.json"
         if not role_file.exists():
-            print(f"Warning: Role file not found: {role_file}")
+            logger.warning(f"Role file not found: {role_file}")
             continue
 
         eval_prompt_template = load_role_eval_prompt(role_file)
         if not eval_prompt_template:
-            print(f"Warning: No eval_prompt for role {role}, skipping")
+            logger.warning(f"No eval_prompt for role {role}, skipping")
             continue
 
-        # Get role responses
-        role_df = df[df["role"] == role]
-        if role_df.empty:
+        # Load responses
+        responses = load_responses(response_file)
+        if not responses:
             continue
 
         # Score responses
         try:
-            scores = await process_role(
+            new_scores = await process_role(
                 role=role,
-                role_df=role_df,
+                responses=responses,
                 eval_prompt_template=eval_prompt_template,
                 client=client,
                 rate_limiter=rate_limiter,
                 judge_model=args.judge_model,
                 max_tokens=args.max_tokens,
                 batch_size=args.batch_size,
+                existing_scores=existing_scores,
             )
+
+            # Merge scores
+            all_scores = {**existing_scores, **new_scores}
 
             # Save scores
             with open(output_file, 'w') as f:
-                json.dump(scores, f, indent=2)
+                json.dump(all_scores, f, indent=2)
 
-            print(f"Saved {len(scores)} scores for {role}")
+            logger.info(f"Saved {len(all_scores)} scores for {role} ({len(new_scores)} new)")
 
         except Exception as e:
-            print(f"Error processing {role}: {e}")
+            logger.error(f"Error processing {role}: {e}")
 
 
 def main():

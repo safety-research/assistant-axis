@@ -64,16 +64,17 @@ print(f"Projection: {projection:.4f}")  # Higher = more assistant-like
 
 The full pipeline consists of 5 scripts:
 
-### 1. Generate Rollouts
+### 1. Generate Responses
 
-Generate model responses for all roles:
+Generate model responses for all roles using vLLM batch inference:
 
 ```bash
 uv run scripts/1_generate.py \
     --model google/gemma-2-27b-it \
     --roles_dir data/prompts/roles \
     --questions_file data/prompts/questions.jsonl \
-    --output outputs/gemma-2-27b/rollouts.parquet
+    --output_dir outputs/gemma-2-27b/responses \
+    --question_count 240
 ```
 
 ### 2. Extract Activations
@@ -83,7 +84,7 @@ Extract mean response activations:
 ```bash
 uv run scripts/2_activations.py \
     --model google/gemma-2-27b-it \
-    --rollouts outputs/gemma-2-27b/rollouts.parquet \
+    --responses_dir outputs/gemma-2-27b/responses \
     --output_dir outputs/gemma-2-27b/activations
 ```
 
@@ -93,7 +94,7 @@ Score role adherence using a judge LLM (requires `OPENAI_API_KEY`):
 
 ```bash
 uv run scripts/3_judge.py \
-    --rollouts outputs/gemma-2-27b/rollouts.parquet \
+    --responses_dir outputs/gemma-2-27b/responses \
     --roles_dir data/prompts/roles \
     --output_dir outputs/gemma-2-27b/scores \
     --judge_model gpt-4.1-mini

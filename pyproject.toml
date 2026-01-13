@@ -8,6 +8,7 @@ dependencies = [
     "torch>=2.0",
     "transformers>=4.40",
     "accelerate",
+    "vllm",
     "scikit-learn",
     "numpy",
     "plotly",
@@ -16,6 +17,7 @@ dependencies = [
     "openai",
     "python-dotenv",
     "tqdm",
+    "jsonlines",
 ]
 
 [build-system]
