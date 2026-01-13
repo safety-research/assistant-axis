@@ -83,3 +83,59 @@ class TestFormatConversation:
         # Empty string is falsy, so should just have user message
         assert len(result) == 1
         assert result[0] == {"role": "user", "content": "Hello!"}
+
+
+class TestQwenThinkingDisabled:
+    """Tests that thinking mode is disabled for Qwen models.
+
+    Qwen3 models have a thinking mode that can be controlled via enable_thinking:
+    - enable_thinking=False: Adds empty <think></think> block to force model to skip thinking
+    - enable_thinking=True (default): No think block, model can choose to think
+
+    We want enable_thinking=False to prevent thinking tokens in responses.
+    """
+
+    @pytest.fixture(scope="class")
+    def qwen3_tokenizer(self):
+        """Load Qwen3 tokenizer which supports thinking mode."""
+        return AutoTokenizer.from_pretrained("Qwen/Qwen3-0.6B")
+
+    def test_qwen3_thinking_disabled_adds_empty_think_block(self, qwen3_tokenizer):
+        """enable_thinking=False adds empty think block to force skipping thinking."""
+        conversation = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Hello!"},
+        ]
+
+        # With thinking disabled (as we do in generation.py)
+        prompt_no_thinking = qwen3_tokenizer.apply_chat_template(
+            conversation,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=False,
+        )
+
+        # enable_thinking=False adds empty think block to force model to skip thinking
+        assert "<think>" in prompt_no_thinking
+        assert "</think>" in prompt_no_thinking
+        # The think block should be empty (just whitespace between tags)
+        assert "<think>\n\n</think>" in prompt_no_thinking
+
+    def test_qwen3_thinking_enabled_no_think_block(self, qwen3_tokenizer):
+        """enable_thinking=True (default) does not add think block - model decides."""
+        conversation = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Hello!"},
+        ]
+
+        # With thinking enabled (the default we want to avoid for generation)
+        prompt_with_thinking = qwen3_tokenizer.apply_chat_template(
+            conversation,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=True,
+        )
+
+        # enable_thinking=True means no pre-filled think block - model can generate thinking
+        assert "<think>" not in prompt_with_thinking
+        assert "</think>" not in prompt_with_thinking

@@ -118,10 +118,16 @@ def generate_response(
     Returns:
         Generated response text
     """
+    # Disable thinking for Qwen models (https://github.com/vllm-project/vllm/issues/18066)
+    chat_template_kwargs = {}
+    if hasattr(tokenizer, 'name_or_path') and "qwen" in tokenizer.name_or_path.lower():
+        chat_template_kwargs["enable_thinking"] = False
+
     prompt = tokenizer.apply_chat_template(
         conversation,
         tokenize=False,
-        add_generation_prompt=True
+        add_generation_prompt=True,
+        **chat_template_kwargs
     )
 
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
@@ -278,10 +284,17 @@ class VLLMGenerator:
         self.load()
 
         tokenizer = self.llm.get_tokenizer()
+
+        # Disable thinking for Qwen models (https://github.com/vllm-project/vllm/issues/18066)
+        chat_template_kwargs = {}
+        if "qwen" in self.model_name.lower():
+            chat_template_kwargs["enable_thinking"] = False
+
         prompts = []
         for conv in conversations:
             prompt = tokenizer.apply_chat_template(
-                conv, tokenize=False, add_generation_prompt=True
+                conv, tokenize=False, add_generation_prompt=True,
+                **chat_template_kwargs
             )
             prompts.append(prompt)
 

@@ -330,6 +330,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
+    { name = "huggingface-hub" },
     { name = "jsonlines" },
     { name = "jupyter" },
     { name = "numpy" },
@@ -353,6 +354,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "accelerate" },
+    { name = "huggingface-hub" },
     { name = "jsonlines" },
     { name = "jupyter" },
     { name = "numpy" },
