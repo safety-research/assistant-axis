@@ -30,7 +30,9 @@ from .axis import (
 )
 from .activations import (
     extract_response_activations,
-    extract_last_token_activations,
+    tokenize_conversation,
+    get_response_token_indices,
+    project_onto_axis,
 )
 from .generation import (
     generate_response,
@@ -70,7 +72,9 @@ __all__ = [
     "aggregate_role_vectors",
     # Activations
     "extract_response_activations",
-    "extract_last_token_activations",
+    "tokenize_conversation",
+    "get_response_token_indices",
+    "project_onto_axis",
     # Generation
     "generate_response",
     "generate_responses",
