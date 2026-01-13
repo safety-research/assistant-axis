@@ -40,7 +40,6 @@ ENV/
 
 # Outputs
 outputs/
-*.pt
 *.parquet
 
 # OS
