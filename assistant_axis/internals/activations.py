@@ -315,23 +315,44 @@ class ActivationExtractor:
         input_ids_tensor = torch.tensor(input_ids_batch, dtype=torch.long, device=device)
         attention_mask_tensor = torch.tensor(attention_mask_batch, dtype=torch.long, device=device)
 
-        # Extract activations
-        with torch.inference_mode():
-            # Run forward pass
-            outputs = self.model(
-                input_ids=input_ids_tensor,
-                attention_mask=attention_mask_tensor,
-                output_hidden_states=True,
-                return_dict=True
-            )
+        # Extract activations using hooks (more reliable than output_hidden_states)
+        layer_outputs = {}  # Will store {layer_idx: tensor} after forward pass
+        handles = []
 
-            # Extract activations for specified layers and ensure bf16 consistency
-            hidden_states = outputs.hidden_states  # tuple of (batch_size, seq_len, hidden_size)
-            selected_activations = torch.stack([hidden_states[i] for i in layer_list])  # (num_layers, batch_size, seq_len, hidden_size)
+        def create_hook_fn(layer_idx):
+            def hook_fn(module, input, output):
+                # Extract the activation tensor (handle tuple output)
+                act_tensor = output[0] if isinstance(output, tuple) else output
+                layer_outputs[layer_idx] = act_tensor
+            return hook_fn
 
-            # Ensure consistent bf16 dtype
-            if selected_activations.dtype != torch.bfloat16:
-                selected_activations = selected_activations.to(torch.bfloat16)
+        # Register hooks for target layers
+        model_layers = self.probing_model.get_layers()
+        for layer_idx in layer_list:
+            target_layer = model_layers[layer_idx]
+            handle = target_layer.register_forward_hook(create_hook_fn(layer_idx))
+            handles.append(handle)
+
+        try:
+            with torch.inference_mode():
+                _ = self.model(
+                    input_ids=input_ids_tensor,
+                    attention_mask=attention_mask_tensor,
+                )
+        finally:
+            # Clean up hooks
+            for handle in handles:
+                handle.remove()
+
+        # Stack activations in layer order, moving to consistent device (first layer's device)
+        target_device = layer_outputs[layer_list[0]].device
+        selected_activations = torch.stack([
+            layer_outputs[i].to(target_device) for i in layer_list
+        ])  # (num_layers, batch_size, seq_len, hidden_size)
+
+        # Ensure consistent bf16 dtype
+        if selected_activations.dtype != torch.bfloat16:
+            selected_activations = selected_activations.to(torch.bfloat16)
 
         batch_metadata = {
             'conversation_lengths': span_metadata['conversation_lengths'],

@@ -57,11 +57,17 @@ def extract_activations_batch(
     layers: List[int],
     batch_size: int = 16,
     max_length: int = 2048,
+    enable_thinking: bool = False,
 ) -> List[Optional[torch.Tensor]]:
     """Extract mean response activations for a batch of conversations."""
     encoder = ConversationEncoder(pm.tokenizer, pm.model_name)
     extractor = ActivationExtractor(pm, encoder)
     span_mapper = SpanMapper(pm.tokenizer)
+
+    # Build chat_kwargs for Qwen models
+    chat_kwargs = {}
+    if 'qwen' in pm.model_name.lower():
+        chat_kwargs['enable_thinking'] = enable_thinking
 
     all_activations = []
     num_conversations = len(conversations)
@@ -75,12 +81,13 @@ def extract_activations_batch(
             batch_conversations,
             layer=layers,
             max_length=max_length,
+            **chat_kwargs,
         )
 
         # batch_activations shape: (num_layers, batch_size, max_seq_len, hidden_size)
 
         # Build spans for this batch
-        _, batch_spans, span_metadata = encoder.build_batch_turn_spans(batch_conversations)
+        _, batch_spans, span_metadata = encoder.build_batch_turn_spans(batch_conversations, **chat_kwargs)
 
         # Use SpanMapper to get per-turn mean activations
         # Returns list of tensors, each (num_turns, num_layers, hidden_size)
@@ -116,7 +123,7 @@ def extract_activations_batch(
     return all_activations
 
 
-def process_role(pm: ProbingModel, role_file: Path, output_dir: Path, layers: List[int], batch_size: int, max_length: int) -> bool:
+def process_role(pm: ProbingModel, role_file: Path, output_dir: Path, layers: List[int], batch_size: int, max_length: int, enable_thinking: bool = False) -> bool:
     """Process a single role file and save activations."""
     role = role_file.stem
     output_file = output_dir / f"{role}.pt"
@@ -146,6 +153,7 @@ def process_role(pm: ProbingModel, role_file: Path, output_dir: Path, layers: Li
         layers=layers,
         batch_size=batch_size,
         max_length=max_length,
+        enable_thinking=enable_thinking,
     )
 
     # Build activation dict
@@ -205,7 +213,7 @@ def process_roles_on_worker(worker_id: int, gpu_ids: List[int], role_files: List
 
         for role_file in tqdm(role_files, desc=f"Worker-{worker_id}", position=worker_id):
             try:
-                success = process_role(pm, role_file, output_dir, layers, args.batch_size, args.max_length)
+                success = process_role(pm, role_file, output_dir, layers, args.batch_size, args.max_length, args.thinking)
                 if success:
                     completed_count += 1
                 else:
@@ -324,6 +332,8 @@ def main():
     parser.add_argument("--max_length", type=int, default=2048, help="Maximum sequence length")
     parser.add_argument("--tensor_parallel_size", type=int, default=None, help="GPUs per model (auto-detect if None)")
     parser.add_argument("--roles", nargs="+", help="Specific roles to process")
+    parser.add_argument("--thinking", type=lambda x: x.lower() in ['true', '1', 'yes'], default=False,
+                       help="Enable thinking mode for Qwen models (default: False)")
     args = parser.parse_args()
 
     # Detect GPUs for multi-worker decision
@@ -391,7 +401,7 @@ def main():
             role_files.append(f)
 
         for role_file in tqdm(role_files, desc="Processing roles"):
-            process_role(pm, role_file, output_dir, layers, args.batch_size, args.max_length)
+            process_role(pm, role_file, output_dir, layers, args.batch_size, args.max_length, args.thinking)
 
     logger.info("Done!")
 

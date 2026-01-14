@@ -139,8 +139,6 @@ async def main_async():
     parser.add_argument("--batch_size", type=int, default=50, help="Concurrent batch size")
     parser.add_argument("--requests_per_second", type=int, default=100, help="Rate limit")
     parser.add_argument("--roles", nargs="+", help="Specific roles to process")
-    parser.add_argument("--skip_existing", action="store_true", help="Skip roles with existing scores")
-    parser.add_argument("--skip_default", action="store_true", default=True, help="Skip default role")
     parser.add_argument("--dry_run", action="store_true", help="Preview what would be processed without making API calls")
     args = parser.parse_args()
 
@@ -165,10 +163,6 @@ async def main_async():
     if args.roles:
         response_files = [f for f in response_files if f.stem in args.roles]
 
-    # Skip default role
-    if args.skip_default:
-        response_files = [f for f in response_files if f.stem != "default"]
-
     logger.info(f"Processing {len(response_files)} roles")
 
     # Dry run mode
@@ -190,10 +184,6 @@ async def main_async():
                 except Exception:
                     pass
 
-            # Skip if all done and skip_existing
-            if args.skip_existing and output_file.exists():
-                continue
-
             # Get role eval prompt
             role_file = roles_dir / f"{role}.json"
             if not role_file.exists():
@@ -201,6 +191,7 @@ async def main_async():
 
             eval_prompt_template = load_role_eval_prompt(role_file)
             if not eval_prompt_template:
+                logger.info(f"  {role}: no eval_prompt, skipping")
                 continue
 
             # Load responses and count prompts to be scored
@@ -271,11 +262,6 @@ async def main_async():
             except Exception:
                 pass
 
-        # Skip if all done and skip_existing
-        if args.skip_existing and output_file.exists():
-            skipped += 1
-            continue
-
         # Get role eval prompt
         role_file = roles_dir / f"{role}.json"
         if not role_file.exists():
@@ -285,8 +271,8 @@ async def main_async():
 
         eval_prompt_template = load_role_eval_prompt(role_file)
         if not eval_prompt_template:
-            errors.append(f"{role}: no eval_prompt in role file")
-            failed += 1
+            logger.info(f"Skipping {role}: no eval_prompt in role file")
+            skipped += 1
             continue
 
         # Load responses
@@ -294,6 +280,19 @@ async def main_async():
         if not responses:
             errors.append(f"{role}: no responses found")
             failed += 1
+            continue
+
+        # Check if all responses are already scored
+        all_scored = True
+        for resp in responses:
+            key = f"{resp['label']}_p{resp['prompt_index']}_q{resp['question_index']}"
+            if key not in existing_scores:
+                all_scored = False
+                break
+
+        if all_scored:
+            logger.info(f"Skipping {role}: all {len(responses)} responses already scored")
+            skipped += 1
             continue
 
         # Score responses

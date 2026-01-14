@@ -35,7 +35,7 @@ echo "=== Step 2: Extracting activations ==="
 uv run 2_activations.py \
     --model "$MODEL" \
     --responses_dir "/workspace/qwen-3-32b/roles_240/responses" \
-    --output_dir "$OUTPUT_DIR/activations" --roles "aberration"
+    --output_dir "$OUTPUT_DIR/activations" --roles "0_default"
 
 # Step 3: Score responses with judge LLM
 # echo ""
