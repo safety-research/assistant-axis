@@ -398,6 +398,10 @@ class ConversationEncoder:
             conversation, tokenize=True, add_generation_prompt=False, **chat_kwargs
         )
 
+        # For Qwen models, use pattern-matching approach (matches persona-subspace behavior)
+        if self._is_qwen():
+            return self._build_turn_spans_qwen(conversation, full_ids, **chat_kwargs)
+
         spans = []
         msgs_before = []
         turn_idx = 0
@@ -414,37 +418,214 @@ class ConversationEncoder:
                 msgs_before, role, text, **chat_kwargs
             )
 
-            # For Qwen models, use a different approach to find absolute position
-            if self._is_qwen():
-                # Find where the content appears in the full conversation
-                abs_start = self._find_subsequence(full_ids, content_ids)
-                if abs_start == -1:
-                    # Fallback: skip this span
-                    msgs_before.append(msg)
-                    continue
-                abs_end = abs_start + len(content_ids)
-            else:
-                # Standard approach for non-Qwen models
-                # Calculate absolute start based on the empty message template
-                msgs_empty_for_this = msgs_before + [{"role": role, "content": ""}]
-                ids_empty_full = self.tokenizer.apply_chat_template(
-                    msgs_empty_for_this, tokenize=True, add_generation_prompt=False, **chat_kwargs
-                )
+            # Standard approach for non-Qwen models
+            # Calculate absolute start based on the empty message template
+            msgs_empty_for_this = msgs_before + [{"role": role, "content": ""}]
+            ids_empty_full = self.tokenizer.apply_chat_template(
+                msgs_empty_for_this, tokenize=True, add_generation_prompt=False, **chat_kwargs
+            )
 
-                # Find where the content appears in the full sequence
-                ids_full_for_this = self.tokenizer.apply_chat_template(
-                    msgs_before + [{"role": role, "content": text}], tokenize=True, add_generation_prompt=False, **chat_kwargs
-                )
+            # Find where the content appears in the full sequence
+            ids_full_for_this = self.tokenizer.apply_chat_template(
+                msgs_before + [{"role": role, "content": text}], tokenize=True, add_generation_prompt=False, **chat_kwargs
+            )
 
-                pref_len = self._longest_common_prefix_len(ids_full_for_this, ids_empty_full)
-                abs_start = pref_len + start_in_delta
-                abs_end = abs_start + len(content_ids)
+            pref_len = self._longest_common_prefix_len(ids_full_for_this, ids_empty_full)
+            abs_start = pref_len + start_in_delta
+            abs_end = abs_start + len(content_ids)
 
             spans.append({
                 "turn": turn_idx,
                 "role": role,
                 "start": abs_start,
                 "end": abs_end,   # exclusive
+                "n_tokens": len(content_ids),
+                "text": text,
+            })
+            msgs_before.append(msg)
+            turn_idx += 1
+
+        return full_ids, spans
+
+    def _build_turn_spans_qwen(
+        self,
+        conversation: List[Dict[str, str]],
+        full_ids: List[int],
+        **chat_kwargs,
+    ) -> Tuple[List[int], List[Dict[str, Any]]]:
+        """
+        Build turn spans for Qwen models using pattern-matching approach.
+
+        This matches the behavior of persona-subspace's response_indices() method,
+        which includes all tokens between <|im_start|>role and <|im_end|> markers
+        (excluding the markers themselves but including boundary tokens like newlines).
+
+        When enable_thinking=False, thinking tokens (<think>...</think>) are filtered out.
+        """
+        spans = []
+
+        # Check if thinking is enabled
+        enable_thinking = chat_kwargs.get('enable_thinking', False)
+
+        # Get special token IDs for Qwen
+        try:
+            im_start_id = self.tokenizer.convert_tokens_to_ids('<|im_start|>')
+            im_end_id = self.tokenizer.convert_tokens_to_ids('<|im_end|>')
+            user_token_id = self.tokenizer.convert_tokens_to_ids('user')
+            assistant_token_id = self.tokenizer.convert_tokens_to_ids('assistant')
+
+            # Thinking tokens (may not exist in all Qwen variants)
+            try:
+                think_start_id = self.tokenizer.convert_tokens_to_ids('<think>')
+                think_end_id = self.tokenizer.convert_tokens_to_ids('</think>')
+            except (KeyError, ValueError):
+                think_start_id = None
+                think_end_id = None
+
+        except (KeyError, ValueError):
+            # Fallback to standard approach if special tokens not found
+            return self._build_turn_spans_fallback(conversation, full_ids, **chat_kwargs)
+
+        # Build a list of (role, text) for non-system messages to match with found spans
+        expected_turns = []
+        for msg in conversation:
+            if msg["role"] != "system":
+                expected_turns.append((msg["role"], msg.get("content", "")))
+
+        turn_idx = 0
+        i = 0
+
+        while i < len(full_ids):
+            # Look for <|im_start|>user or <|im_start|>assistant pattern
+            if i + 1 < len(full_ids) and full_ids[i] == im_start_id:
+                role_token = full_ids[i + 1]
+
+                if role_token == user_token_id:
+                    role = "user"
+                elif role_token == assistant_token_id:
+                    role = "assistant"
+                else:
+                    i += 1
+                    continue
+
+                # Found start of a turn, skip the <|im_start|>role tokens
+                content_start = i + 2
+
+                # Find the corresponding <|im_end|>
+                content_end = None
+                for j in range(content_start, len(full_ids)):
+                    if full_ids[j] == im_end_id:
+                        content_end = j  # Don't include the <|im_end|> token
+                        break
+
+                if content_end is not None and turn_idx < len(expected_turns):
+                    expected_role, expected_text = expected_turns[turn_idx]
+
+                    # Verify role matches
+                    if role == expected_role:
+                        raw_indices = list(range(content_start, content_end))
+
+                        # Filter out thinking tokens for assistant turns if thinking disabled
+                        if role == "assistant" and not enable_thinking and think_start_id is not None and think_end_id is not None:
+                            filtered_indices = []
+                            skip_until_think_end = False
+
+                            for idx in raw_indices:
+                                token_id = full_ids[idx]
+
+                                # Check if we hit a <think> token
+                                if token_id == think_start_id:
+                                    skip_until_think_end = True
+                                    continue
+
+                                # Check if we hit a </think> token
+                                if token_id == think_end_id:
+                                    skip_until_think_end = False
+                                    continue
+
+                                # Skip tokens that are inside thinking blocks
+                                if skip_until_think_end:
+                                    continue
+
+                                # Include all tokens that are not inside thinking blocks
+                                filtered_indices.append(idx)
+
+                            # Clean up extracted text by removing extra whitespace/newlines at boundaries
+                            if filtered_indices:
+                                # Get the text to check for leading/trailing cleanup
+                                extracted_token_ids = [full_ids[idx] for idx in filtered_indices]
+                                extracted_text = self.tokenizer.decode(extracted_token_ids)
+
+                                # If text starts/ends with excessive whitespace, find better boundaries
+                                if extracted_text.strip() != extracted_text:
+                                    # Remove leading whitespace-only tokens
+                                    while (filtered_indices and
+                                           self.tokenizer.decode([full_ids[filtered_indices[0]]]).strip() == ''):
+                                        filtered_indices.pop(0)
+
+                                    # Remove trailing whitespace-only tokens
+                                    while (filtered_indices and
+                                           self.tokenizer.decode([full_ids[filtered_indices[-1]]]).strip() == ''):
+                                        filtered_indices.pop()
+
+                            final_indices = filtered_indices
+                        else:
+                            final_indices = raw_indices
+
+                        if final_indices:
+                            spans.append({
+                                "turn": turn_idx,
+                                "role": role,
+                                "start": min(final_indices),
+                                "end": max(final_indices) + 1,  # exclusive
+                                "n_tokens": len(final_indices),
+                                "text": expected_text,
+                            })
+                        turn_idx += 1
+
+                    i = content_end + 1
+                else:
+                    i += 1
+            else:
+                i += 1
+
+        return full_ids, spans
+
+    def _build_turn_spans_fallback(
+        self,
+        conversation: List[Dict[str, str]],
+        full_ids: List[int],
+        **chat_kwargs,
+    ) -> Tuple[List[int], List[Dict[str, Any]]]:
+        """Fallback method for building turn spans when pattern matching fails."""
+        spans = []
+        msgs_before = []
+        turn_idx = 0
+
+        for msg in conversation:
+            role = msg["role"]
+            text = msg.get("content", "")
+
+            if role == "system":
+                msgs_before.append(msg)
+                continue
+
+            content_ids, start_in_delta = self._content_only_ids_and_offset(
+                msgs_before, role, text, **chat_kwargs
+            )
+
+            # Find where the content appears in the full conversation
+            abs_start = self._find_subsequence(full_ids, content_ids)
+            if abs_start == -1:
+                msgs_before.append(msg)
+                continue
+            abs_end = abs_start + len(content_ids)
+
+            spans.append({
+                "turn": turn_idx,
+                "role": role,
+                "start": abs_start,
+                "end": abs_end,
                 "n_tokens": len(content_ids),
                 "text": text,
             })
