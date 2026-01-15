@@ -6,6 +6,8 @@
   <img src="img/assistant_axis.png" width="800" alt="Persona drift trajectory showing activation projections along the Assistant Axis over a conversation">
 </p>
 
+<p align="center"><em>(Left) Vectors corresponding to character archetypes are computed by measuring model activations on responses when the model is system-prompted to act as that character. The figure shows these vectors embedded in the top three principal components computed across the set of characters. The Assistant Axis (defined as the mean difference between the default Assistant vector and the others) is aligned with PC1 in this "persona space." This occurs across different models; results from Llama 3.3 70B are pictured here. Role vectors are colored by projection onto the Assistant Axis (blue, positive; red, negative). (Right) In a conversation between Llama 3.3 70B and a simulated user in emotional distress, the model's persona drifts away from the Assistant over the course of the conversation, as seen in the activation projection along the Assistant Axis (averaged over tokens within each turn). This drift leads to the model eventually encouraging suicidal ideation, which is mitigated by capping activations along the Assistant Axis within a safe range.</em></p>
+
 ## Overview
 
 Large language models default to a "helpful Assistant" persona cultivated during post-training. However, this persona can *drift* during conversations—particularly in emotionally charged or meta-reflective contexts—leading to harmful or bizarre behavior.
@@ -213,13 +215,13 @@ fig = plot_variance_explained(variance)
 
 ## Models from the Paper
 
-| Model | Target Layer | Capping Config | Recommended Experiment |
-|-------|-------------|----------------|------------------------|
-| `google/gemma-2-27b-it` | 22 | - | - |
-| `Qwen/Qwen3-32B` | 32 | `qwen-3-32b/capping_config.pt` | `layers_46:54-p0.25` |
-| `meta-llama/Llama-3.3-70B-Instruct` | 40 | `llama-3.3-70b/capping_config.pt` | `layers_56:72-p0.25` |
+| Model | Target Layer | Recommended Activation Capping Setting |
+|-------|-------------|------------------------|
+| `google/gemma-2-27b-it` | 22 | - |
+| `Qwen/Qwen3-32B` | 32 | `layers_46:54-p0.25` |
+| `meta-llama/Llama-3.3-70B-Instruct` | 40 | `layers_56:72-p0.25` |
 
-Other models will auto-infer configuration based on architecture.
+Other models will auto-infer configuration based on architecture. We recommend turning reasoning off.
 
 ## Citation
 
