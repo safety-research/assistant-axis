@@ -17,42 +17,28 @@ Example:
 
 
 MODEL_CONFIGS = {
-    # Format: model_name -> {target_layer, total_layers, short_name}
+    # Format: model_name -> {target_layer, total_layers, short_name, capping_config, capping_experiment}
     # target_layer is the recommended layer for axis computation (typically ~middle)
+    # capping_config is the HuggingFace path to the capping config file
+    # capping_experiment is the recommended experiment ID for activation capping
     "google/gemma-2-27b-it": {
         "target_layer": 22,
         "total_layers": 46,
-        "short_name": "Gemma",
-    },
-    "google/gemma-2-9b-it": {
-        "target_layer": 21,
-        "total_layers": 42,
         "short_name": "Gemma",
     },
     "Qwen/Qwen3-32B": {
         "target_layer": 32,
         "total_layers": 64,
         "short_name": "Qwen",
-    },
-    "Qwen/Qwen2.5-32B-Instruct": {
-        "target_layer": 32,
-        "total_layers": 64,
-        "short_name": "Qwen",
-    },
-    "Qwen/Qwen2.5-7B-Instruct": {
-        "target_layer": 14,
-        "total_layers": 28,
-        "short_name": "Qwen",
-    },
-    "meta-llama/Llama-3.1-8B-Instruct": {
-        "target_layer": 16,
-        "total_layers": 32,
-        "short_name": "Llama",
+        "capping_config": "qwen-3-32b/capping_config.pt",
+        "capping_experiment": "layers_46:54-p0.25",
     },
     "meta-llama/Llama-3.3-70B-Instruct": {
         "target_layer": 40,
         "total_layers": 80,
         "short_name": "Llama",
+        "capping_config": "llama-3.3-70b/capping_config.pt",
+        "capping_experiment": "layers_56:72-p0.25",
     },
 }
 

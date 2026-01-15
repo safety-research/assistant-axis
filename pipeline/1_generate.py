@@ -223,8 +223,8 @@ def main():
     )
 
     parser.add_argument('--model', type=str, required=True, help='HuggingFace model name')
-    parser.add_argument('--roles_dir', type=str, default="../data/generation/roles/instructions", help='Directory containing role JSON files')
-    parser.add_argument('--questions_file', type=str, default="../data/generation/extraction_questions.jsonl", help='Path to questions JSONL file')
+    parser.add_argument('--roles_dir', type=str, default="../data/roles/instructions", help='Directory containing role JSON files')
+    parser.add_argument('--questions_file', type=str, default="../data/extraction_questions.jsonl", help='Path to questions JSONL file')
     parser.add_argument('--output_dir', type=str, required=True, help='Output directory for JSONL files')
     parser.add_argument('--max_model_len', type=int, default=2048, help='Maximum model context length')
     parser.add_argument('--tensor_parallel_size', type=int, default=None, help='Number of GPUs (auto-detect if None)')

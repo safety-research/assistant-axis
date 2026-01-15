@@ -20,7 +20,7 @@ This repository provides tools for computing, analyzing, and steering with the A
 
 See the full [paper here](https://arxiv.org/abs/XXXX.XXXXX).
 
-Pre-computed axes and persona vectors for Gemma 2 27B, Qwen 3 32B, and Llama 3.3 70B are available on [HuggingFace](https://huggingface.co/datasets/lu-christina/assistant-axis-vectors).
+Pre-computed axes and persona vectors for Gemma 2 27B, Qwen 3 32B, and Llama 3.3 70B are available on [HuggingFace](https://huggingface.co/datasets/lu-christina/assistant-axis-vectors). Qwen 3 32B and Llama 3.3 70B also have activation capping steering settings available.
 
 ## Installation
 
@@ -54,7 +54,7 @@ Interactive notebooks for analysis and experimentation. See [`notebooks/README.m
 
 - **PCA analysis** of role vectors and variance explained
 - **Axis visualization** with cosine similarity to roles
-- **Steering demo** on arbitrary prompts
+- **Steering and activation capping** on arbitrary prompts
 - **Transcript projection** to visualize persona trajectories
 
 ## Computing the Axis
@@ -125,6 +125,30 @@ projection = project(activations[0], axis, layer=22)
 print(f"Projection: {projection:.4f}")
 ```
 
+### Mitigate persona drift with activation capping
+
+Activation capping is a more targeted intervention that prevents activations from exceeding a threshold along specific directions. Pre-computed capping configs are available for Qwen 3 32B and Llama 3.3 70B.
+
+```python
+from huggingface_hub import hf_hub_download
+from assistant_axis import get_config, load_capping_config, build_capping_steerer
+
+# Get model config (includes recommended capping experiment)
+config = get_config("Qwen/Qwen3-32B")
+
+# Download and load capping config
+capping_config_path = hf_hub_download(
+    repo_id="lu-christina/assistant-axis-vectors",
+    filename=config["capping_config"],  # "qwen-3-32b/capping_config.pt"
+    repo_type="dataset"
+)
+capping_config = load_capping_config(capping_config_path)
+
+# Apply capping during generation
+with build_capping_steerer(model, capping_config, config["capping_experiment"]):
+    response = model.generate(...)
+```
+
 ## API Reference
 
 ### Models
@@ -160,6 +184,24 @@ with ActivationSteering(
     output = model.generate(...)
 ```
 
+### Activation Capping
+
+```python
+from assistant_axis import load_capping_config, build_capping_steerer
+
+# Load pre-computed capping config
+capping_config = load_capping_config("path/to/capping_config.pt")
+
+# Build steerer from a specific experiment
+# Experiments define which layers to cap and threshold values
+with build_capping_steerer(model, capping_config, "layers_46:54-p0.25"):
+    output = model.generate(...)
+
+# List available experiments
+for exp in capping_config['experiments']:
+    print(exp['id'])
+```
+
 ### PCA
 
 ```python
@@ -171,11 +213,11 @@ fig = plot_variance_explained(variance)
 
 ## Models from the Paper
 
-| Model | Target Layer | Total Layers |
-|-------|-------------|--------------|
-| `google/gemma-2-27b-it` | 22 | 46 |
-| `Qwen/Qwen3-32B` | 32 | 64 |
-| `meta-llama/Llama-3.3-70B-Instruct` | 40 | 80 |
+| Model | Target Layer | Capping Config | Recommended Experiment |
+|-------|-------------|----------------|------------------------|
+| `google/gemma-2-27b-it` | 22 | - | - |
+| `Qwen/Qwen3-32B` | 32 | `qwen-3-32b/capping_config.pt` | `layers_46:54-p0.25` |
+| `meta-llama/Llama-3.3-70B-Instruct` | 40 | `llama-3.3-70b/capping_config.pt` | `layers_56:72-p0.25` |
 
 Other models will auto-infer configuration based on architecture.
 

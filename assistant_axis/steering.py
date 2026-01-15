@@ -439,3 +439,99 @@ def create_mean_ablation_steerer(
         positions="all",
         **kwargs
     )
+
+
+def load_capping_config(config_path: str) -> dict:
+    """
+    Load a capping config file.
+
+    Args:
+        config_path: Path to the .pt config file
+
+    Returns:
+        Dict with 'vectors' and 'experiments' keys
+    """
+    return torch.load(config_path, map_location='cpu', weights_only=False)
+
+
+def build_capping_steerer(
+    model: torch.nn.Module,
+    capping_config: dict,
+    experiment_id: Union[str, int],
+    **kwargs
+) -> ActivationSteering:
+    """
+    Build an ActivationSteering context manager from a capping config experiment.
+
+    Args:
+        model: The model to steer
+        capping_config: Dict loaded from a capping config file (via load_capping_config)
+        experiment_id: Either the experiment ID string (e.g. "layers_46:54-p0.25")
+                      or the experiment index
+        **kwargs: Additional arguments passed to ActivationSteering
+
+    Returns:
+        ActivationSteering context manager configured for capping
+
+    Example:
+        from huggingface_hub import hf_hub_download
+        from assistant_axis import load_capping_config, build_capping_steerer
+
+        config_path = hf_hub_download(
+            repo_id="lu-christina/assistant-axis-vectors",
+            filename="qwen-3-32b/capping_config.pt",
+            repo_type="dataset"
+        )
+        config = load_capping_config(config_path)
+
+        with build_capping_steerer(model, config, "layers_46:54-p0.25"):
+            response = model.generate(...)
+    """
+    # Find the experiment
+    experiment = None
+    if isinstance(experiment_id, int):
+        experiment = capping_config['experiments'][experiment_id]
+    else:
+        for exp in capping_config['experiments']:
+            if exp['id'] == experiment_id:
+                experiment = exp
+                break
+
+    if experiment is None:
+        raise ValueError(f"Experiment '{experiment_id}' not found in config")
+
+    # Collect capping interventions
+    vectors = []
+    cap_thresholds = []
+    layer_indices = []
+
+    for intervention in experiment['interventions']:
+        if 'cap' not in intervention:
+            continue
+
+        vector_name = intervention['vector']
+        cap_value = float(intervention['cap'])
+
+        vec_data = capping_config['vectors'][vector_name]
+        layer_idx = vec_data['layer']
+        vector = vec_data['vector'].to(dtype=torch.float32)
+
+        vectors.append(vector)
+        cap_thresholds.append(cap_value)
+        layer_indices.append(layer_idx)
+
+    if not vectors:
+        raise ValueError(f"No capping interventions found in experiment '{experiment_id}'")
+
+    vectors_tensor = torch.stack(vectors)
+
+    return ActivationSteering(
+        model=model,
+        steering_vectors=vectors_tensor,
+        layer_indices=layer_indices,
+        intervention_type="capping",
+        cap_thresholds=cap_thresholds,
+        coefficients=[0.0] * len(vectors),
+        positions="all",
+        **kwargs
+    )

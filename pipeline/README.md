@@ -38,8 +38,8 @@ uv run 1_generate.py \
 This generates 1200 responses per role (5 system prompts x 240 questions) by default.
 
 **Additional options:**
-- `--roles_dir`: Path to role definitions (default: `data/generation/roles/instructions`)
-- `--questions_file`: Path to questions (default: `data/generation/questions.jsonl`)
+- `--roles_dir`: Path to role definitions (default: `data/roles/instructions`)
+- `--questions_file`: Path to questions (default: `data/extraction_questions.jsonl`)
 - `--question_count`: Number of questions to use (default: 240)
 - `--tensor_parallel_size`: Number of GPUs per worker, e.g. if you set to 2 and you have 8 GPUs available, 4 workers will process in parallel
 - `--roles`: Individual role names to process for testing
@@ -115,7 +115,7 @@ axis = mean(default) - mean(role_vectors)
 
 ### Roles
 
-Role definitions are stored in `data/generation/roles/instructions/` as JSON files:
+Role definitions are stored in `data/roles/instructions/` as JSON files:
 
 ```json
 {
@@ -131,7 +131,7 @@ There are 275 character roles plus 1 `default.json` with neutral system prompts.
 
 ### Questions
 
-Questions are stored in `data/generation/questions.jsonl` (240 questions designed to elicit role-specific responses).
+Questions are stored in `data/extraction_questions.jsonl` (240 questions designed to elicit role-specific responses).
 
 ## Tips
 

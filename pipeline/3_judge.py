@@ -132,7 +132,7 @@ async def process_role(
 async def main_async():
     parser = argparse.ArgumentParser(description="Score role responses with judge LLM")
     parser.add_argument("--responses_dir", type=str, required=True, help="Directory with response JSONL files")
-    parser.add_argument("--roles_dir", type=str, default="../data/generation/roles/instructions", help="Directory containing role JSON files")
+    parser.add_argument("--roles_dir", type=str, default="../data/roles/instructions", help="Directory containing role JSON files")
     parser.add_argument("--output_dir", type=str, required=True, help="Output directory for score JSON files")
     parser.add_argument("--judge_model", type=str, default="gpt-4.1-mini", help="Judge model to use")
     parser.add_argument("--max_tokens", type=int, default=10, help="Max tokens for judge response")

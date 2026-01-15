@@ -41,6 +41,8 @@ from .steering import (
     create_feature_ablation_steerer,
     create_multi_feature_steerer,
     create_mean_ablation_steerer,
+    load_capping_config,
+    build_capping_steerer,
 )
 from .pca import (
     compute_pca,
@@ -72,6 +74,8 @@ __all__ = [
     "create_feature_ablation_steerer",
     "create_multi_feature_steerer",
     "create_mean_ablation_steerer",
+    "load_capping_config",
+    "build_capping_steerer",
     # PCA
     "compute_pca",
     "plot_variance_explained",
