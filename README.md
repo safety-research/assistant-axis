@@ -16,9 +16,9 @@ The **Assistant Axis** is a direction in activation space that captures how "Ass
 - **Steer** model behavior toward or away from the Assistant persona
 - **Mitigate** persona-based jailbreaks through activation capping
 
-This repository provides tools for computing, analyzing, and steering with the Assistant Axis.
+This repository provides tools for computing, analyzing, and steering with the Assistant Axis. It also contains full transcripts from conversations mentioned in the paper.
 
-See the full [paper](https://arxiv.org/abs/XXXX.XXXXX).
+See the full [paper here](https://arxiv.org/abs/XXXX.XXXXX).
 
 Pre-computed axes and persona vectors for Gemma 2 27B, Qwen 3 32B, and Llama 3.3 70B are available on [HuggingFace](https://huggingface.co/datasets/lu-christina/assistant-axis-vectors).
 
@@ -117,6 +117,13 @@ To compute the axis for a new model, run the 5-step pipeline:
 5. **Aggregate** into the final axis
 
 See [`pipeline/README.md`](pipeline/README.md) for detailed instructions.
+
+## Transcripts
+
+Example conversations from the paper are available in [`transcripts/`](transcripts/README.md):
+
+- **Case studies** showing persona drift and activation capping mitigation (jailbreaks, delusion reinforcement, self-harm scenarios)
+- **Example conversations** from simulated multi-turn conversations across domains (coding, writing, therapy, philosophy)
 
 ## API Reference
 
