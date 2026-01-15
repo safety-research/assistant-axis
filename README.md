@@ -1,59 +1,74 @@
 # Assistant Axis
 
-Tools for computing and steering with the **assistant axis** - a direction in activation space that captures the difference between role-playing and default assistant behavior in language models.
+**Situating and Stabilizing the Default Persona of Language Models**
+
+<p align="center">
+  <img src="img/assistant_axis.png" width="800" alt="Persona drift trajectory showing activation projections along the Assistant Axis over a conversation">
+</p>
 
 ## Overview
 
-The assistant axis is computed as:
+Large language models default to a "helpful Assistant" persona cultivated during post-training. However, this persona can *drift* during conversations—particularly in emotionally charged or meta-reflective contexts—leading to harmful or bizarre behavior.
 
-```
-axis = mean(default_activations) - mean(pos_3_activations)
-```
+The **Assistant Axis** is a direction in activation space that captures how "Assistant-like" a model's current persona is. It can be used to:
 
-Where:
-- `default_activations`: Activations from neutral system prompts (e.g., "You are an AI assistant")
-- `pos_3_activations`: Activations from responses fully playing a role (score=3 from judge)
+- **Monitor** persona drift in real-time by projecting activations onto the axis
+- **Steer** model behavior toward or away from the Assistant persona
+- **Mitigate** persona-based jailbreaks through activation capping
 
-The axis points **from role-playing toward default assistant behavior**.
+This repository provides tools for computing, analyzing, and steering with the Assistant Axis.
+
+See the full [paper](https://arxiv.org/abs/XXXX.XXXXX).
+
+Pre-computed axes and persona vectors for Gemma 2 27B, Qwen 3 32B, and Llama 3.3 70B are available on [HuggingFace](https://huggingface.co/datasets/lu-christina/assistant-axis-vectors).
 
 ## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/assistant-axis.git
+git clone https://github.com/safety-research/assistant-axis.git
 cd assistant-axis
 
-# Install with uv
+# Install with uv (recommended)
 uv sync
-
-# Or with pip
-pip install -e .
 ```
 
 ## Quick Start
 
-### Load and use a pre-computed axis
+### Load a pre-computed axis
 
 ```python
 from huggingface_hub import hf_hub_download
-from assistant_axis import load_model, load_axis, ActivationSteering, generate_response
+from assistant_axis import load_model, load_axis
 
-# Load model and axis
+# Load model
 model, tokenizer = load_model("google/gemma-2-27b-it")
+
+# Download pre-computed axis
 axis_path = hf_hub_download(
     repo_id="lu-christina/assistant-axis-vectors",
     filename="gemma-2-27b/assistant_axis.pt",
     repo_type="dataset"
 )
 axis = load_axis(axis_path)
+```
 
-# Steer model outputs (positive = more assistant-like, negative = more role-playing)
-with ActivationSteering(model, steering_vectors=[axis[22]],
-                       coefficients=[1.0], layer_indices=[22]):
+### Steer model outputs
+
+```python
+from assistant_axis import ActivationSteering, generate_response
+
+# Positive coefficient = more assistant-like
+# Negative coefficient = more role-playing
+with ActivationSteering(
+    model,
+    steering_vectors=[axis[22]],
+    coefficients=[1.0],
+    layer_indices=[22]
+):
     response = generate_response(model, tokenizer, conversation)
 ```
 
-### Project activations onto the axis
+### Monitor persona drift
 
 ```python
 from assistant_axis import extract_response_activations, project
@@ -61,116 +76,47 @@ from assistant_axis import extract_response_activations, project
 # Extract activations from a conversation
 activations = extract_response_activations(model, tokenizer, [conversation])
 
-# Project onto axis
+# Project onto axis (higher = more assistant-like)
 projection = project(activations[0], axis, layer=22)
-print(f"Projection: {projection:.4f}")  # Higher = more assistant-like
+print(f"Projection: {projection:.4f}")
 ```
 
-## Computing the Axis
+## Understanding the Axis
 
-Run the full pipeline with the example script:
+The Assistant Axis is computed as:
 
-```bash
-./pipeline/run_pipeline.sh
+```
+axis = mean(default_activations) - mean(role_activations)
 ```
 
-Or run each step individually:
+Where:
+- `default_activations`: Activations from neutral system prompts ("You are an AI assistant")
+- `role_activations`: Activations from responses fully embodying character roles (score=3 from judge)
 
-### 1. Generate Responses
-
-Generate model responses for all roles using vLLM batch inference:
-
-```bash
-uv run pipeline/1_generate.py \
-    --model google/gemma-2-27b-it \
-    --roles_dir data/prompts/roles \
-    --questions_file data/prompts/questions.jsonl \
-    --output_dir outputs/gemma-2-27b/responses \
-    --question_count 240
-```
-
-### 2. Extract Activations
-
-Extract mean response activations:
-
-```bash
-uv run pipeline/2_activations.py \
-    --model google/gemma-2-27b-it \
-    --responses_dir outputs/gemma-2-27b/responses \
-    --output_dir outputs/gemma-2-27b/activations
-```
-
-### 3. Score Responses
-
-Score role adherence using a judge LLM (requires `OPENAI_API_KEY`):
-
-```bash
-uv run pipeline/3_judge.py \
-    --responses_dir outputs/gemma-2-27b/responses \
-    --roles_dir data/prompts/roles \
-    --output_dir outputs/gemma-2-27b/scores \
-    --judge_model gpt-4.1-mini
-```
-
-**Score scale:**
-- 0: Model refused to answer
-- 1: Model says it can't be the role, but can help
-- 2: Model identifies as AI but has some role attributes
-- 3: Model is fully playing the role
-
-### 4. Compute Per-Role Vectors
-
-Compute pos_3 vectors (mean of score=3 activations):
-
-```bash
-uv run pipeline/4_vectors.py \
-    --activations_dir outputs/gemma-2-27b/activations \
-    --scores_dir outputs/gemma-2-27b/scores \
-    --output_dir outputs/gemma-2-27b/vectors
-```
-
-### 5. Compute Axis
-
-Aggregate into the final axis:
-
-```bash
-uv run pipeline/5_axis.py \
-    --vectors_dir outputs/gemma-2-27b/vectors \
-    --output outputs/gemma-2-27b/axis.pt
-```
+The axis points **from role-playing toward default assistant behavior**:
+- **Positive projection**: More assistant-like (transparent, grounded, flexible)
+- **Negative projection**: More role-playing (enigmatic, subversive, dramatic)
 
 ## Notebooks
 
-Interactive notebooks for analysis:
+Interactive notebooks for analysis and experimentation. See [`notebooks/README.md`](notebooks/README.md) for details.
 
-1. **`1_visualize_axis.ipynb`** - Inspect axis norms and properties
-2. **`2_pca_analysis.ipynb`** - PCA on activations, compare PC1 with axis
-3. **`3_steering.ipynb`** - Steering demo with different coefficients
-4. **`4_interactive.ipynb`** - Interactive chat with projection tracking
+- **PCA analysis** of role vectors and variance explained
+- **Axis visualization** with cosine similarity to roles
+- **Steering demo** on arbitrary prompts
+- **Transcript projection** to visualize persona trajectories
 
-## Data
+## Computing the Axis
 
-### Roles
+To compute the axis for a new model, run the 5-step pipeline:
 
-The `data/prompts/roles/` directory contains 276 role JSON files:
-- 275 character roles (pirate, wizard, etc.)
-- 1 `default.json` with neutral system prompts
+1. **Generate** model responses for 275 character roles
+2. **Extract** mean response activations
+3. **Score** role adherence with an LLM judge
+4. **Compute** per-role vectors from high-scoring responses
+5. **Aggregate** into the final axis
 
-Role format:
-```json
-{
-  "instruction": [
-    {"pos": "You are a pirate. Respond as a pirate would."},
-    {"pos": "Act as a swashbuckling pirate..."},
-    ...
-  ],
-  "eval_prompt": "Rate how well the answer embodies a pirate..."
-}
-```
-
-### Questions
-
-`data/prompts/questions.jsonl` contains 240 questions for probing role behavior.
+See [`pipeline/README.md`](pipeline/README.md) for detailed instructions.
 
 ## API Reference
 
@@ -200,9 +146,9 @@ from assistant_axis import ActivationSteering
 with ActivationSteering(
     model,
     steering_vectors=[axis[22]],
-    coefficients=[1.0],  # Positive = more assistant-like
+    coefficients=[1.0],       # Positive = more assistant-like
     layer_indices=[22],
-    intervention_type="addition"  # or "ablation"
+    intervention_type="addition"
 ):
     output = model.generate(...)
 ```
@@ -218,23 +164,24 @@ fig = plot_variance_explained(variance)
 
 ## Model Support
 
-Models used in the paper:
-- `google/gemma-2-27b-it` (target layer: 22)
-- `Qwen/Qwen3-32B` (target layer: 32)
-- `meta-llama/Llama-3.3-70B-Instruct` (target layer: 40)
+| Model | Target Layer | Total Layers |
+|-------|-------------|--------------|
+| `google/gemma-2-27b-it` | 22 | 46 |
+| `Qwen/Qwen3-32B` | 32 | 64 |
+| `meta-llama/Llama-3.3-70B-Instruct` | 40 | 80 |
 
-Other models will auto-infer configuration.
-
-## License
-
-MIT
+Other models will auto-infer configuration based on architecture.
 
 ## Citation
 
 ```bibtex
-@article{assistant-axis,
-  title={The Assistant Axis: A Direction in Activation Space},
-  author={...},
-  year={2024}
+@inproceedings{lu2025assistant,
+  title={The Assistant Axis: Situating and Stabilizing the Default Persona of Language Models},
+  author={Lu, Christina and Gallagher, Jack and Michala, Jonathan and Fish, Kyle and Lindsey, Jack},
+  year={2025}
 }
 ```
+
+## License
+
+MIT
