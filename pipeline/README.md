@@ -7,15 +7,15 @@ This directory contains the 5-step pipeline for computing the Assistant Axis fro
 - GPU with sufficient memory for your target model
 - `OPENAI_API_KEY` environment variable (for the LLM judge)
 
-## Full pipeline nontes
+## Full pipeline tips
 
-The example script includes the full pipeline but we recommend
+The example bash script includes the full pipeline but we recommend running scripts separately.
 
 - Run `1_generate.py` then `2_activations.py` in order with task-spooler or tmux... this will take a while
 - `3_judge.py` can be run in parallel with `2_activations.py`, after `1_generate.py`
-- The rest go in order after 1, 2, 3 are complete ^_^
+- The rest go in order after 1, 2, 3 are complete
 - All scripts can be restarted and will not overwrite or redo previous work
-- `1_generate.py` then `2_activations.py` support tensor parallelization and automatically splits work based on available GPUs / `tensor_parallel_size`
+- `1_generate.py` and `2_activations.py` support tensor parallelization
 
 ```bash
 ./run_pipeline.sh
