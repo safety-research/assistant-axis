@@ -20,7 +20,7 @@ The **Assistant Axis** is a direction in activation space that captures how "Ass
 
 This repository provides tools for computing, analyzing, and steering with the Assistant Axis. It also contains full transcripts from conversations mentioned in the paper.
 
-See the full [paper here](https://arxiv.org/abs/XXXX.XXXXX).
+See the full [paper here](https://arxiv.org/abs/2601.10387).
 
 Pre-computed axes and persona vectors for Gemma 2 27B, Qwen 3 32B, and Llama 3.3 70B are available on [HuggingFace](https://huggingface.co/datasets/lu-christina/assistant-axis-vectors). Qwen 3 32B and Llama 3.3 70B also have activation capping steering settings available.
 
@@ -226,10 +226,14 @@ Other models will auto-infer configuration based on architecture. We recommend t
 ## Citation
 
 ```bibtex
-@inproceedings{lu2025assistant,
-  title={The Assistant Axis: Situating and Stabilizing the Default Persona of Language Models},
-  author={Lu, Christina and Gallagher, Jack and Michala, Jonathan and Fish, Kyle and Lindsey, Jack},
-  year={2025}
+@misc{lu2026assistant,
+      title={The Assistant Axis: Situating and Stabilizing the Default Persona of Language Models}, 
+      author={Christina Lu and Jack Gallagher and Jonathan Michala and Kyle Fish and Jack Lindsey},
+      year={2026},
+      eprint={2601.10387},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2601.10387}, 
 }
 ```
 
