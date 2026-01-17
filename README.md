@@ -43,19 +43,19 @@ axis = mean(default_activations) - mean(role_activations)
 ```
 
 Where:
-- `default_activations`: Activations from neutral system prompts ("You are an AI assistant")
+- `default_activations`: Activations from neutral system prompts ("You are an AI Assistant")
 - `role_activations`: Activations from responses fully embodying character roles (score=3 from judge)
 
-The axis points **from role-playing toward default assistant behavior**:
-- **Positive projection**: More assistant-like (transparent, grounded, flexible)
-- **Negative projection**: More role-playing (enigmatic, subversive, dramatic)
+The axis points **toward default Assistant behavior**:
+- **Higher projections**: More Assistant-like (transparent, grounded, flexible)
+- **Lower projection**: Drifting away from the Assistant (enigmatic, subversive, dramatic)
 
 ## Notebooks
 
 Interactive notebooks for analysis and experimentation. See [`notebooks/README.md`](notebooks/README.md) for details.
 
 - **PCA analysis** of role vectors and variance explained
-- **Axis visualization** with cosine similarity to roles
+- **Assistant Axis visualization** with cosine similarity to roles
 - **Steering and activation capping** on arbitrary prompts
 - **Transcript projection** to visualize persona trajectories
 
@@ -103,8 +103,8 @@ axis = load_axis(axis_path)
 ```python
 from assistant_axis import ActivationSteering, generate_response
 
-# Positive coefficient = more assistant-like
-# Negative coefficient = more role-playing
+# Positive coefficient = more Assistant-like
+# Negative coefficient = pushing away from the Assistant
 with ActivationSteering(
     model,
     steering_vectors=[axis[22]],
@@ -215,7 +215,7 @@ fig = plot_variance_explained(variance)
 
 ## Models from the Paper
 
-| Model | Target Layer | Recommended Activation Capping Setting |
+| Model | Target Layer | Best Activation Capping Setting |
 |-------|-------------|------------------------|
 | `google/gemma-2-27b-it` | 22 | - |
 | `Qwen/Qwen3-32B` | 32 | `layers_46:54-p0.25` |
