@@ -11,7 +11,7 @@ This directory contains the 5-step pipeline for computing the Assistant Axis fro
 
 The example bash script includes the full pipeline but we recommend running scripts separately.
 
-- Run `1_generate.py` then `2_activations.py` in order with task-spooler or tmux... this will take a while
+- Run `1_generate.py` then `2_activations.py` in order with [task-spooler](https://github.com/justanhduc/task-spooler) or tmux... this will take a while
 - `3_judge.py` can be run in parallel with `2_activations.py`, after `1_generate.py`
 - The rest go in order after 1, 2, 3 are complete
 - All scripts can be restarted and will not overwrite or redo previous work
@@ -135,7 +135,7 @@ Questions are stored in `data/extraction_questions.jsonl` (240 questions designe
 
 ## Tips
 
-- **Parallelization**: Steps 1 and 3 can run in parallel once step 1 completes
+- **Parallelization**: Steps 2 and 3 can run in parallel once step 1 completes
 - **Checkpointing**: The pipeline won't overwrite existing outputs—delete to regenerate
 - **Task spooler**: For long-running jobs, consider using [task-spooler](https://github.com/justanhduc/task-spooler)
 
