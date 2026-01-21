@@ -50,6 +50,11 @@ from .pca import (
     MeanScaler,
     L2MeanScaler,
 )
+from .trait_steering import (
+    TraitSteerer,
+    load_steerer,
+    SUPPORTED_MODELS,
+)
 
 __all__ = [
     # Models
@@ -81,4 +86,8 @@ __all__ = [
     "plot_variance_explained",
     "MeanScaler",
     "L2MeanScaler",
+    # Trait Steering
+    "TraitSteerer",
+    "load_steerer",
+    "SUPPORTED_MODELS",
 ]
